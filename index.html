@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yakıt Takip - Motosiklet & Otomobil Yakıt Tüketim Hesaplama</title>
+    <meta name="description" content="Motosiklet ve Benzin/LPG'li otomobiliniz için yakıt tüketimini, maliyetlerini ve istatistiklerini takip edin.">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Main Style Sheet -->
+    <link rel="stylesheet" href="app.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json">
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(registration => console.log('ServiceWorker kaydedildi.', registration))
+                    .catch(error => console.log('ServiceWorker hatası:', error));
+            });
+        }
+    </script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="brand">
+                <i data-lucide="fuel" class="brand-icon"></i>
+                <h2>Yakıt<span>Takip</span></h2>
+            </div>
+            <nav class="nav-menu">
+                <button class="nav-item active" data-tab="dashboard">
+                    <i data-lucide="layout-dashboard"></i> Panel
+                </button>
+                <button class="nav-item" data-tab="add-log">
+                    <i data-lucide="plus-circle"></i> Yeni Kayıt Ekle
+                </button>
+                <button class="nav-item" data-tab="history">
+                    <i data-lucide="history"></i> Geçmiş Kayıtlar
+                </button>
+                <button class="nav-item" data-tab="settings">
+                    <i data-lucide="settings"></i> Ayarlar & Yedek
+                </button>
+            </nav>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="content-header">
+                <div class="header-info">
+                    <h1 id="page-title">Gösterge Paneli</h1>
+                    <p id="page-subtitle" class="text-muted">Yakıt tüketimi ve maliyet analizleriniz</p>
+                </div>
+                <!-- Vehicle Selector -->
+                <div class="vehicle-selector-wrapper">
+                    <select id="global-vehicle-filter" class="select-input">
+                        <option value="all">Tüm Araçlar</option>
+                        <option value="motorcycle">Motosiklet (Benzin)</option>
+                        <option value="car">Otomobil (Benzin & LPG)</option>
+                    </select>
+                </div>
+            </header>
+
+            <!-- Dashboard Tab -->
+            <section id="tab-dashboard" class="tab-content active">
+                <!-- KPI Stats Grid -->
+                <div class="stats-grid">
+                    <div class="stat-card" id="card-total-distance">
+                        <div class="stat-icon-wrapper blue">
+                            <i data-lucide="milestone"></i>
+                        </div>
+                        <div class="stat-details">
+                            <span class="stat-label">Toplam Yol</span>
+                            <h3 class="stat-value" id="val-total-distance">0 km</h3>
+                            <span class="stat-trend" id="trend-distance">Son kayıt bazlı</span>
+                        </div>
+                    </div>
+                    <div class="stat-card" id="card-total-cost">
+                        <div class="stat-icon-wrapper red">
+                            <i data-lucide="turkish-lira"></i>
+                        </div>
+                        <div class="stat-details" style="width: 100%;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 8px;">
+                                <span class="stat-label">Aylık Harcama</span>
+                                <select id="month-selector" style="background: rgba(255, 255, 255, 0.08); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 6px; padding: 3px 8px; font-size: 0.8rem; cursor: pointer; outline: none; font-family: inherit; font-weight: 500; min-width: 110px;"></select>
+                            </div>
+                            <h3 class="stat-value" id="val-total-cost" style="margin-top: 4px;">0.00 TL</h3>
+                            <span class="stat-trend" id="trend-cost">Yakıt ve LPG dahil</span>
+                        </div>
+                    </div>
+                    <div class="stat-card" id="card-avg-consumption">
+                        <div class="stat-icon-wrapper green">
+                            <i data-lucide="droplet"></i>
+                        </div>
+                        <div class="stat-details">
+                            <span class="stat-label">Ort. Tüketim</span>
+                            <h3 class="stat-value" id="val-avg-consumption">0.00 L/100km</h3>
+                            <span class="stat-trend" id="trend-consumption">Karma tüketim</span>
+                        </div>
+                    </div>
+                    <div class="stat-card" id="card-cost-per-km">
+                        <div class="stat-icon-wrapper yellow">
+                            <i data-lucide="trending-up"></i>
+                        </div>
+                        <div class="stat-details">
+                            <span class="stat-label">Km Başına Maliyet</span>
+                            <h3 class="stat-value" id="val-cost-per-km">0.00 TL/km</h3>
+                            <span class="stat-trend" id="trend-cost-km">Ortalama yakıt fiyatı</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Car Fuel Breakdown Card (Only visible when Car or All is selected) -->
+                <div class="fuel-breakdown-card" id="car-breakdown-section">
+                    <div class="breakdown-header">
+                        <h4>Otomobil Yakıt Dağılımı</h4>
+                    </div>
+                    <div class="breakdown-body">
+                        <div class="breakdown-item">
+                            <div class="breakdown-info">
+                                <span class="breakdown-label"><span class="badge badge-gasoline">Benzin</span></span>
+                                <span class="breakdown-value" id="car-gas-total">0.00 TL (0.00 L)</span>
+                            </div>
+                            <div class="progress-bar-bg">
+                                <div class="progress-bar-fill gasoline" id="car-gas-progress" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="breakdown-item">
+                            <div class="breakdown-info">
+                                <span class="breakdown-label"><span class="badge badge-lpg">LPG</span></span>
+                                <span class="breakdown-value" id="car-lpg-total">0.00 TL (0.00 L)</span>
+                            </div>
+                            <div class="progress-bar-bg">
+                                <div class="progress-bar-fill lpg" id="car-lpg-progress" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Section -->
+                <div class="charts-section">
+                    <div class="chart-container-card">
+                        <div class="chart-header">
+                            <h4>Aylık Yakıt Gideri Dağılımı</h4>
+                            <span class="text-muted">Aylık toplam harcamalar</span>
+                        </div>
+                        <div class="chart-body">
+                            <canvas id="monthlyCostChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-container-card">
+                        <div class="chart-header">
+                            <h4>Yakıt Birim Fiyatı Değişimi</h4>
+                            <span class="text-muted">TL/Litre bazlı fiyat grafiği</span>
+                        </div>
+                        <div class="chart-body">
+                            <canvas id="priceTrendChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Add Log Tab -->
+            <section id="tab-add-log" class="tab-content">
+                <div class="form-container-card">
+                    <div class="form-header">
+                        <h3><i data-lucide="plus-circle" class="header-icon"></i> Yeni Yakıt Dolum Kaydı</h3>
+                        <p class="text-muted">Lütfen yaptığınız yakıt alımına dair detayları giriniz</p>
+                    </div>
+                    <form id="fuel-log-form">
+                        <input type="hidden" id="log-id"> <!-- Used for Editing -->
+                        
+                        <div class="form-grid">
+                            <!-- Vehicle Selection -->
+                            <div class="form-group">
+                                <label for="form-vehicle">Araç Seçimi</label>
+                                <select id="form-vehicle" class="form-input" required>
+                                    <option value="" disabled selected>Araç seçiniz...</option>
+                                    <option value="motorcycle">Motosiklet</option>
+                                    <option value="car">Otomobil</option>
+                                </select>
+                            </div>
+
+                            <!-- Fuel Type Selection -->
+                            <div class="form-group">
+                                <label for="form-fuel-type">Yakıt Türü</label>
+                                <select id="form-fuel-type" class="form-input" required>
+                                    <option value="" disabled selected>Önce aracı seçin...</option>
+                                    <option value="gasoline">Benzin</option>
+                                    <option value="lpg">LPG</option>
+                                </select>
+                            </div>
+
+                            <!-- Date Field -->
+                            <div class="form-group">
+                                <label for="form-date">Tarih</label>
+                                <input type="date" id="form-date" class="form-input" required>
+                            </div>
+
+                            <!-- Odometer Field -->
+                            <div class="form-group">
+                                <label for="form-odometer">Kilometre Sayacı (km)</label>
+                                <div class="input-with-icon">
+                                    <input type="number" id="form-odometer" class="form-input" min="0" placeholder="Örn: 42150" required>
+                                    <span class="input-suffix">km</span>
+                                </div>
+                                <span class="help-text" id="odometer-help">Son girilen kilometre: <span id="last-odometer-val">-</span></span>
+                            </div>
+
+                            <!-- Fuel Amount Field -->
+                            <div class="form-group">
+                                <label for="form-amount">Yakıt Miktarı (Litre)</label>
+                                <div class="input-with-icon">
+                                    <input type="number" id="form-amount" class="form-input" step="0.01" min="0.1" placeholder="Örn: 12.50" required>
+                                    <span class="input-suffix">L</span>
+                                </div>
+                            </div>
+
+                            <!-- Unit Price Field -->
+                            <div class="form-group">
+                                <label for="form-unit-price">Litre Fiyatı (TL/L)</label>
+                                <div class="input-with-icon">
+                                    <input type="number" id="form-unit-price" class="form-input" step="0.01" min="0.1" placeholder="Örn: 43.20" required>
+                                    <span class="input-suffix">TL</span>
+                                </div>
+                            </div>
+
+                            <!-- Total Price Field -->
+                            <div class="form-group">
+                                <label for="form-total-price">Toplam Tutar (TL)</label>
+                                <div class="input-with-icon">
+                                    <input type="number" id="form-total-price" class="form-input" step="0.01" min="0.1" placeholder="Örn: 540.00" required>
+                                    <span class="input-suffix">TL</span>
+                                </div>
+                                <span class="help-text">Miktar ve birim fiyata göre otomatik hesaplanır.</span>
+                            </div>
+
+                            <!-- Full Tank Option -->
+                            <div class="form-group checkbox-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="form-full-tank" checked>
+                                    <span>Depoyu Fulledim</span>
+                                </label>
+                                <span class="help-text">Ortalama tüketim hesaplamaları için depoyu fullemek önemlidir.</span>
+                            </div>
+
+                            <!-- Notes Field -->
+                            <div class="form-group col-span-2">
+                                <label for="form-notes">Notlar (İsteğe Bağlı)</label>
+                                <textarea id="form-notes" class="form-input" placeholder="Örn: Shell İstasyonu, Uzun Yol vb." rows="2"></textarea>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" id="btn-cancel-edit" class="btn btn-secondary style-hidden">Vazgeç</button>
+                            <button type="submit" class="btn btn-primary"><i data-lucide="check"></i> <span id="submit-btn-text">Kaydet</span></button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- History Tab -->
+            <section id="tab-history" class="tab-content">
+                <div class="table-container-card">
+                    <div class="table-header">
+                        <h3><i data-lucide="history" class="header-icon"></i> Geçmiş Yakıt Kayıtları</h3>
+                        <div class="table-filters">
+                            <div class="filter-group">
+                                <select id="filter-vehicle" class="select-input compact">
+                                    <option value="all">Tüm Araçlar</option>
+                                    <option value="motorcycle">Motosiklet</option>
+                                    <option value="car">Otomobil</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <select id="filter-fuel-type" class="select-input compact">
+                                    <option value="all">Tüm Yakıtlar</option>
+                                    <option value="gasoline">Benzin</option>
+                                    <option value="lpg">LPG</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Desktop and Tablet Table view -->
+                    <div class="table-responsive">
+                        <table class="history-table">
+                            <thead>
+                                <tr>
+                                    <th>Tarih</th>
+                                    <th>Araç</th>
+                                    <th>Yakıt Türü</th>
+                                    <th>Sayaç (km)</th>
+                                    <th>Alınan Yakıt</th>
+                                    <th>Birim Fiyat</th>
+                                    <th>Toplam Tutar</th>
+                                    <th>Durum</th>
+                                    <th>Notlar</th>
+                                    <th class="actions-header">İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-table-body">
+                                <!-- Dynamic rows go here -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Empty State -->
+                    <div class="empty-state" id="history-empty-state">
+                        <i data-lucide="folder-open" class="empty-icon"></i>
+                        <p>Henüz hiçbir yakıt kaydı bulunmuyor.</p>
+                        <button class="btn btn-primary btn-sm" onclick="app.switchTab('add-log')">İlk Kaydı Ekle</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Settings & Backup Tab -->
+            <section id="tab-settings" class="tab-content">
+                <div class="settings-grid">
+                    <!-- Backup & Restore -->
+                    <div class="settings-card">
+                        <div class="card-header">
+                            <h3><i data-lucide="database" class="header-icon"></i> Veri Yedekleme & Geri Yükleme</h3>
+                            <p class="text-muted">GitHub Pages üzerinde verileriniz tarayıcınızda (localStorage) saklanır. Cihaz değiştirirken yedek alabilirsiniz.</p>
+                        </div>
+                        <div class="settings-actions">
+                            <div class="action-item">
+                                <h5>Yedek Al (Dışa Aktar)</h5>
+                                <p>Tüm yakıt kayıtlarınızı JSON dosyası olarak bilgisayarınıza indirin.</p>
+                                <button id="btn-export" class="btn btn-secondary"><i data-lucide="download"></i> Yedek Dosyası İndir</button>
+                            </div>
+                            <hr class="settings-divider">
+                            <div class="action-item">
+                                <h5>Yedekten Geri Yükle (İçe Aktar)</h5>
+                                <p>Daha önce aldığınız yedek dosyasını (.json) seçerek verilerinizi geri yükleyin. <strong>(Mevcut verileriniz silinecektir!)</strong></p>
+                                <div class="file-upload-wrapper">
+                                    <button class="btn btn-secondary btn-file-trigger"><i data-lucide="upload"></i> Dosya Seç</button>
+                                    <input type="file" id="import-file-input" accept=".json">
+                                    <span id="file-name-text" class="text-muted">Dosya seçilmedi</span>
+                                </div>
+                                <button id="btn-import" class="btn btn-primary" style="margin-top: 10px;" disabled><i data-lucide="check"></i> Verileri İçe Aktar</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Reset & Danger Zone -->
+                    <div class="settings-card danger-zone">
+                        <div class="card-header">
+                            <h3><i data-lucide="alert-triangle" class="header-icon"></i> Tehlikeli Bölge</h3>
+                            <p class="text-muted">Bu işlemler geri alınamaz. Lütfen dikkatli olunuz.</p>
+                        </div>
+                        <div class="settings-actions">
+                            <div class="action-item">
+                                <h5>Tüm Verileri Temizle</h5>
+                                <p>Tarayıcınızda kayıtlı olan tüm yakıt takipleri ve araç bilgileri tamamen silinecektir.</p>
+                                <button id="btn-clear-data" class="btn btn-danger"><i data-lucide="trash-2"></i> Tüm Kayıtları Sıfırla</button>
+                            </div>
+                            <hr class="settings-divider">
+                            <div class="action-item">
+                                <h5>Örnek Veri Yükle</h5>
+                                <p>Uygulamayı test etmek için rastgele oluşturulmuş deneme yakıt kayıtlarını yükleyin.</p>
+                                <button id="btn-demo-data" class="btn btn-success"><i data-lucide="sparkles"></i> Deneme Verileri Yükle</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Toast Notification System -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- App Logic Script -->
+    <script src="app.js"></script>
+</body>
+</html>
