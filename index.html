@@ -40,6 +40,9 @@
                 <button class="nav-item active" data-tab="dashboard">
                     <i data-lucide="layout-dashboard"></i> Panel
                 </button>
+                <button class="nav-item" data-tab="vehicles">
+                    <i data-lucide="car"></i> Araçlarım
+                </button>
                 <button class="nav-item" data-tab="add-log">
                     <i data-lucide="plus-circle"></i> Yeni Kayıt Ekle
                 </button>
@@ -62,11 +65,7 @@
                 </div>
                 <!-- Vehicle Selector -->
                 <div class="vehicle-selector-wrapper">
-                    <select id="global-vehicle-filter" class="select-input">
-                        <option value="all">Tüm Araçlar</option>
-                        <option value="motorcycle">Motosiklet (Benzin)</option>
-                        <option value="car">Otomobil (Benzin & LPG)</option>
-                    </select>
+                    <select id="global-vehicle-filter" class="select-input"></select>
                 </div>
             </header>
 
@@ -117,12 +116,27 @@
                             <span class="stat-trend" id="trend-cost-km">Ortalama yakıt fiyatı</span>
                         </div>
                     </div>
+                    <div class="stat-card" id="card-last-odometer">
+                        <div class="stat-icon-wrapper purple">
+                            <i data-lucide="gauge"></i>
+                        </div>
+                        <div class="stat-details">
+                            <span class="stat-label">Son Kilometre</span>
+                            <h3 class="stat-value" id="val-last-odometer">0 km</h3>
+                            <span class="stat-trend" id="trend-last-odometer">Henüz kayıt yok</span>
+                            <div class="odometer-quick-entry" id="odometer-quick-entry" style="display:none;">
+                                <input type="number" id="current-odometer-input" class="odometer-input" placeholder="Güncel km" min="0">
+                                <button type="button" id="btn-save-current-odometer" class="odometer-save-btn" title="Kaydet"><i data-lucide="check"></i></button>
+                            </div>
+                            <span class="stat-trend" id="since-last-fill-text" style="display:none;"></span>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Car Fuel Breakdown Card (Only visible when Car or All is selected) -->
                 <div class="fuel-breakdown-card" id="car-breakdown-section">
                     <div class="breakdown-header">
-                        <h4>Otomobil Yakıt Dağılımı</h4>
+                        <h4 id="breakdown-title">Yakıt Dağılımı</h4>
                     </div>
                     <div class="breakdown-body">
                         <div class="breakdown-item">
@@ -133,6 +147,7 @@
                             <div class="progress-bar-bg">
                                 <div class="progress-bar-fill gasoline" id="car-gas-progress" style="width: 0%"></div>
                             </div>
+                            <span class="breakdown-subvalue" id="car-gas-per-km">Ort. tüketim verisi yok</span>
                         </div>
                         <div class="breakdown-item">
                             <div class="breakdown-info">
@@ -142,7 +157,12 @@
                             <div class="progress-bar-bg">
                                 <div class="progress-bar-fill lpg" id="car-lpg-progress" style="width: 0%"></div>
                             </div>
+                            <span class="breakdown-subvalue" id="car-lpg-per-km">Ort. tüketim verisi yok</span>
                         </div>
+                    </div>
+                    <div class="savings-banner" id="car-savings-banner" style="display:none;">
+                        <i data-lucide="piggy-bank"></i>
+                        <span id="car-savings-text"></span>
                     </div>
                 </div>
 
@@ -169,6 +189,58 @@
                 </div>
             </section>
 
+            <!-- Vehicles Tab -->
+            <section id="tab-vehicles" class="tab-content">
+                <div class="form-container-card" style="margin-bottom: 24px;">
+                    <div class="form-header">
+                        <h3><i data-lucide="car" class="header-icon"></i> <span id="vehicle-form-title">Yeni Araç Ekle</span></h3>
+                        <p class="text-muted">Aracınızın plakasını ve kullandığı yakıt türlerini belirtin. Böylece birden fazla aracınızın verileri asla karışmaz.</p>
+                    </div>
+                    <form id="vehicle-form">
+                        <input type="hidden" id="vehicle-id">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="vehicle-plaka">Plaka</label>
+                                <input type="text" id="vehicle-plaka" class="form-input" placeholder="Örn: 34 ABC 123" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="vehicle-isim">Etiket / İsim (İsteğe Bağlı)</label>
+                                <input type="text" id="vehicle-isim" class="form-input" placeholder="Örn: Aile Arabası">
+                            </div>
+                            <div class="form-group col-span-2">
+                                <label>Kullandığı Yakıt Türleri</label>
+                                <div class="fuel-type-checkboxes">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="vehicle-fuel-gasoline" value="gasoline">
+                                        <span>Benzin</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="vehicle-fuel-lpg" value="lpg">
+                                        <span>LPG</span>
+                                    </label>
+                                </div>
+                                <span class="help-text">En az bir yakıt türü seçmelisiniz. Aracınız hem Benzin hem LPG kullanıyorsa ikisini de işaretleyin.</span>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" id="btn-cancel-vehicle-edit" class="btn btn-secondary style-hidden">Vazgeç</button>
+                            <button type="submit" class="btn btn-primary"><i data-lucide="check"></i> <span id="vehicle-submit-btn-text">Araç Ekle</span></button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="table-container-card">
+                    <div class="table-header">
+                        <h3><i data-lucide="list" class="header-icon"></i> Kayıtlı Araçlar</h3>
+                    </div>
+                    <div class="vehicles-grid" id="vehicles-list"></div>
+                    <div class="empty-state" id="vehicles-empty-state">
+                        <i data-lucide="car" class="empty-icon"></i>
+                        <p>Henüz araç eklenmedi. Yukarıdaki formdan ilk aracınızı ekleyin.</p>
+                    </div>
+                </div>
+            </section>
+
             <!-- Add Log Tab -->
             <section id="tab-add-log" class="tab-content">
                 <div class="form-container-card">
@@ -183,11 +255,7 @@
                             <!-- Vehicle Selection -->
                             <div class="form-group">
                                 <label for="form-vehicle">Araç Seçimi</label>
-                                <select id="form-vehicle" class="form-input" required>
-                                    <option value="" disabled selected>Araç seçiniz...</option>
-                                    <option value="motorcycle">Motosiklet</option>
-                                    <option value="car">Otomobil</option>
-                                </select>
+                                <select id="form-vehicle" class="form-input" required></select>
                             </div>
 
                             <!-- Fuel Type Selection -->
@@ -275,11 +343,7 @@
                         <h3><i data-lucide="history" class="header-icon"></i> Geçmiş Yakıt Kayıtları</h3>
                         <div class="table-filters">
                             <div class="filter-group">
-                                <select id="filter-vehicle" class="select-input compact">
-                                    <option value="all">Tüm Araçlar</option>
-                                    <option value="motorcycle">Motosiklet</option>
-                                    <option value="car">Otomobil</option>
-                                </select>
+                                <select id="filter-vehicle" class="select-input compact"></select>
                             </div>
                             <div class="filter-group">
                                 <select id="filter-fuel-type" class="select-input compact">
