@@ -24,9 +24,13 @@ const elements = {
     pageSubtitle: document.getElementById('page-subtitle'),
 
     // KPI Cards
+    cardTotalDistance: document.getElementById('card-total-distance'),
     valTotalDistance: document.getElementById('val-total-distance'),
+    cardTotalCost: document.getElementById('card-total-cost'),
     valTotalCost: document.getElementById('val-total-cost'),
+    cardAvgConsumption: document.getElementById('card-avg-consumption'),
     valAvgConsumption: document.getElementById('val-avg-consumption'),
+    cardCostPerKm: document.getElementById('card-cost-per-km'),
     valCostPerKm: document.getElementById('val-cost-per-km'),
     valLastOdometer: document.getElementById('val-last-odometer'),
     trendLastOdometer: document.getElementById('trend-last-odometer'),
@@ -314,6 +318,9 @@ const app = {
             elements.pageTitle.textContent = elements.logIdInput.value ? "Kaydı Düzenle" : "Yeni Kayıt Ekle";
             elements.pageSubtitle.textContent = "Yakıt dolum verilerinizi giriniz";
             elements.globalVehicleFilter.parentElement.style.display = 'none';
+            // Rebuild the fuel-type options in case the selected vehicle's fuel types
+            // were edited (e.g. LPG-only -> LPG+Benzin) since this tab was last shown.
+            this.handleVehicleChange(elements.formVehicle.value);
             this.updateLastOdometerHelp(elements.formVehicle.value);
         } else if (tabId === 'history') {
             elements.pageTitle.textContent = "Geçmiş Kayıtlar";
@@ -552,6 +559,7 @@ const app = {
 
     handleVehicleChange: function(vehicleId) {
         const fuelSelect = elements.formFuelType;
+        const previousValue = fuelSelect.value;
         fuelSelect.innerHTML = '';
 
         const vehicle = state.vehicles.find(v => v.id === vehicleId);
@@ -582,6 +590,12 @@ const app = {
             opt.textContent = ft === 'gasoline' ? 'Benzin' : 'LPG';
             fuelSelect.appendChild(opt);
         });
+
+        // Keep whatever fuel type was already selected if it's still valid for this
+        // vehicle (e.g. re-rendering on tab switch shouldn't discard the user's pick).
+        if (vehicle.fuelTypes.includes(previousValue)) {
+            fuelSelect.value = previousValue;
+        }
 
         fuelSelect.removeAttribute('disabled');
     },
@@ -667,7 +681,6 @@ const app = {
         } else {
             // Add
             state.logs.push(logData);
-            delete vehicle.currentOdometer; // the new fill-up is now the freshest reference point
             this.showToast('Yeni yakıt kaydı eklendi.', 'success');
         }
 
@@ -736,18 +749,51 @@ const app = {
         return { dist, fuel, avg: dist > 0 ? (fuel / dist) * 100 : 0 };
     },
 
+    // Same full-tank-to-full-tank walk as fullTankConsumption, but keeps only the most
+    // recent completed cycle instead of accumulating every cycle in the vehicle's
+    // history. A lifetime average blends in fills from months ago and drifts away from
+    // what the last fill-up actually cost you (e.g. 193 km on 18.92 L is 9.8 L/100km,
+    // but blended into a year of history it can read as 8-point-something) — this
+    // matches the "since last fill-up" convention already used by Son Mesafe and the
+    // TL/km stats elsewhere on this dashboard.
+    lastCycleConsumption: function(logs) {
+        const sorted = [...logs].sort((a, b) => a.odometer - b.odometer);
+        let lastFull = -1, temp = 0, dist = 0, fuel = 0;
+        for (const l of sorted) {
+            if (lastFull === -1) {
+                if (l.fullTank) { lastFull = l.odometer; temp = 0; }
+            } else {
+                temp += l.amount;
+                if (l.fullTank) {
+                    const d = l.odometer - lastFull;
+                    if (d > 0) { dist = d; fuel = temp; }
+                    lastFull = l.odometer;
+                    temp = 0;
+                }
+            }
+        }
+        return { dist, fuel, avg: dist > 0 ? (fuel / dist) * 100 : 0 };
+    },
+
     // KPI and Stats calculations
     updateDashboard: function() {
         const filter = elements.globalVehicleFilter.value || 'all';
         const selectedVehicle = filter !== 'all' ? state.vehicles.find(v => v.id === filter) : null;
+        // Whether the dashboard is showing a breakdown across more than one series
+        // (all vehicles, or one vehicle with more than one fuel type) — every KPI card
+        // shares this so their spans always add up to a multiple of 4 and the grid
+        // never leaves an empty gap (the "wide" cards are 2 tracks, so all four must
+        // switch together: 4x1 or 4x2, never a 1/2 mix that doesn't divide evenly).
+        const isMultiSeries = filter === 'all' ? state.vehicles.length > 0 : !!(selectedVehicle && selectedVehicle.fuelTypes.length > 1);
 
-        // 1. Calculate Total Distance
+        // 1. Calculate Distance Since Previous Fill-up (last two records by odometer, any fuel type)
         let totalDistance = 0;
         state.vehicles.forEach(v => {
             if (filter !== 'all' && v.id !== filter) return;
             const vLogs = state.logs.filter(l => l.vehicleId === v.id).sort((a, b) => a.odometer - b.odometer);
-            if (vLogs.length > 1) totalDistance += (vLogs[vLogs.length - 1].odometer - vLogs[0].odometer);
+            if (vLogs.length > 1) totalDistance += (vLogs[vLogs.length - 1].odometer - vLogs[vLogs.length - 2].odometer);
         });
+        elements.cardTotalDistance.classList.toggle('stat-card-wide', isMultiSeries);
         elements.valTotalDistance.textContent = totalDistance > 0 ? `${totalDistance.toLocaleString('tr-TR')} km` : '0 km';
 
         // 1b. Last Known Odometer Reading
@@ -878,63 +924,129 @@ const app = {
             totalCostHtml = `<div style="font-size: 1.35rem; font-weight: 700;">${totalCost.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL</div>`;
         }
 
+        elements.cardTotalCost.classList.toggle('stat-card-wide', isMultiSeries);
         elements.valTotalCost.innerHTML = totalCostHtml;
         document.getElementById('trend-cost').textContent = 'Seçili ayın toplamı';
 
-        // 3. Cost per KM
+        // 3. Cost per KM — combine all fuel types on the vehicle's real (shared) odometer
+        // history so overlapping Benzin/LPG ranges on the same car aren't counted twice.
         let costPerKm = 0, consumedCost = 0, totalDistanceForCost = 0;
         state.vehicles.forEach(v => {
             if (filter !== 'all' && v.id !== filter) return;
-            v.fuelTypes.forEach(ft => {
-                const ftLogs = state.logs.filter(l => l.vehicleId === v.id && l.fuelType === ft).sort((a, b) => a.odometer - b.odometer);
-                if (ftLogs.length > 1) {
-                    const dist = ftLogs[ftLogs.length - 1].odometer - ftLogs[0].odometer;
-                    if (dist > 0) {
-                        totalDistanceForCost += dist;
-                        consumedCost += ftLogs.slice(1).reduce((sum, l) => sum + l.totalPrice, 0);
-                    }
+            const vLogs = state.logs.filter(l => l.vehicleId === v.id).sort((a, b) => a.odometer - b.odometer);
+            if (vLogs.length > 1) {
+                const dist = vLogs[vLogs.length - 1].odometer - vLogs[0].odometer;
+                if (dist > 0) {
+                    totalDistanceForCost += dist;
+                    consumedCost += vLogs.slice(1).reduce((sum, l) => sum + l.totalPrice, 0);
                 }
-            });
+            }
         });
         if (totalDistanceForCost > 0) costPerKm = consumedCost / totalDistanceForCost;
+        elements.cardCostPerKm.classList.toggle('stat-card-wide', isMultiSeries);
         elements.valCostPerKm.textContent = costPerKm > 0 ? `${costPerKm.toFixed(2)} TL/km` : '0.00 TL/km';
 
         // 4. Average Fuel Consumption (L/100km), per vehicle + fuel type
         let avgConsumptionHtml = '';
         let trendText = '';
 
+        const fmtTL = (n) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        // Cost/distance for one fuel type's TL/km rate: cost of that type's most recent
+        // fill, over the distance from that fill to the vehicle's TRUE latest odometer
+        // reading (any fuel type's newer log, or a manually updated "current km") — not
+        // to that type's own previous fill. A car mostly driven on LPG, with gasoline
+        // only for cold starts, can go a long time between gasoline purchases; the last
+        // gasoline fill's cost should keep diluting across every km driven since, on
+        // whichever fuel, instead of staying pinned to one past gasoline-to-gasoline
+        // stretch that never updates while LPG-only km keep piling up.
+        const lastPairCostDist = (logs, vLogs, currentOdometer) => {
+            if (logs.length === 0) return null;
+            const sortedType = [...logs].sort((a, b) => a.odometer - b.odometer);
+            const lastOfType = sortedType[sortedType.length - 1];
+            const reference = (vLogs && vLogs.length > 0) ? vLogs : logs;
+            let latestOdo = reference.reduce((max, l) => Math.max(max, l.odometer), 0);
+            if (currentOdometer > latestOdo) latestOdo = currentOdometer;
+            const dist = latestOdo - lastOfType.odometer;
+            if (dist > 0) return { cost: lastOfType.totalPrice, dist };
+            // Nothing newer yet (on any fuel, or manually entered) — this fill IS the
+            // latest reading so far, so fall back to this type's own previous completed
+            // cycle instead of a 0/undefined rate.
+            if (sortedType.length < 2) return null;
+            const prev = sortedType[sortedType.length - 2];
+            const fallbackDist = lastOfType.odometer - prev.odometer;
+            return fallbackDist > 0 ? { cost: lastOfType.totalPrice, dist: fallbackDist } : null;
+        };
+        const lastPairRate = (logs, vLogs, currentOdometer) => {
+            const cd = lastPairCostDist(logs, vLogs, currentOdometer);
+            return cd ? cd.cost / cd.dist : null;
+        };
+
+
         if (filter === 'all') {
             if (state.vehicles.length === 0) {
                 avgConsumptionHtml = 'Veri Yok';
                 trendText = 'Henüz araç eklenmedi';
             } else {
-                const rows = state.vehicles.map(v => v.fuelTypes.map(ft => {
-                    const r = this.fullTankConsumption(state.logs.filter(l => l.vehicleId === v.id && l.fuelType === ft));
+                // Toplam below is just this sum — nothing fancier. Each row's TL/km is
+                // already "cost per km of real vehicle travel" for that fuel type (both
+                // measured on the same shared odometer), so for a car that burns gas and
+                // LPG on the very same road at the same time, adding the rows' rates
+                // together *is* the combined cost per km — no distance math needed, and
+                // it visibly matches what's printed above it.
+                let totalRateAll = 0, anyRateAll = false;
+                const rows = state.vehicles.map(v => {
+                    const vLogs = state.logs.filter(l => l.vehicleId === v.id);
+                    return v.fuelTypes.map(ft => {
+                    const ftLogs = vLogs.filter(l => l.fuelType === ft);
+                    const r = this.lastCycleConsumption(ftLogs);
+                    const rate = lastPairRate(ftLogs, vLogs, v.currentOdometer);
+                    if (rate !== null) { totalRateAll += rate; anyRateAll = true; }
                     const label = ft === 'gasoline' ? 'Benzin' : 'LPG';
                     const badgeClass = ft === 'gasoline' ? 'badge-gasoline' : 'badge-lpg';
-                    return `<div class="stat-breakdown-row" style="align-items:center;"><span class="badge ${badgeClass}" style="padding:2px 6px;">${v.plaka} ${label}</span><span style="font-weight:600;">${r.avg > 0 ? r.avg.toFixed(1) + ' L/100' : 'Veri Yok'}</span></div>`;
-                }).join('')).join('');
-                avgConsumptionHtml = `<div class="stat-breakdown-list" style="border-top:none; padding-top:0; margin-top:0;">${rows}</div>`;
-                trendText = 'Araç bazlı ortalama tüketimler';
+                    return `<div class="stat-breakdown-row"><span style="display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden;"><span style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${v.plaka}</span><span class="badge ${badgeClass}" style="padding:2px 6px; flex-shrink:0;">${label}</span></span><span style="text-align:right;"><span style="font-weight:600;">${r.avg > 0 ? r.avg.toFixed(2) + ' L/100' : 'Veri Yok'}</span><br><span style="font-size:0.72rem; font-weight:500; color:var(--text-muted);">${rate !== null ? fmtTL(rate) + ' TL/km' : ''}</span></span></div>`;
+                    }).join('');
+                }).join('');
+
+                const totalRowAll = anyRateAll
+                    ? `<div class="stat-breakdown-row" style="grid-column:1/-1; border-top:1px solid var(--border-color); margin-top:6px; padding-top:6px;"><span style="font-weight:600;">Toplam</span><span style="font-weight:700;">${fmtTL(totalRateAll)} TL/km</span></div>`
+                    : '';
+
+                avgConsumptionHtml = `<div class="stat-breakdown-list" style="border-top:none; padding-top:0; margin-top:0;">${rows}${totalRowAll}</div>`;
+                trendText = 'Araç bazlı son dolum tüketimi ve km başına maliyet';
             }
         } else if (selectedVehicle) {
             if (selectedVehicle.fuelTypes.length === 1) {
-                const r = this.fullTankConsumption(state.logs.filter(l => l.vehicleId === filter));
+                const logs = state.logs.filter(l => l.vehicleId === filter);
+                const r = this.lastCycleConsumption(logs);
+                const rate = lastPairRate(logs, logs, selectedVehicle.currentOdometer);
                 avgConsumptionHtml = r.avg > 0 ? `${r.avg.toFixed(2)} L/100km` : 'Yetersiz veri';
-                trendText = r.dist > 0 ? `Toplam ${r.dist} km'lik ölçüm` : 'En az 2 fulleme kaydı gerekir';
+                trendText = r.dist > 0 ? `Son ${r.dist} km${rate !== null ? ' · ' + fmtTL(rate) + ' TL/km' : ''}` : 'En az 2 dolum (fulleme) kaydı gerekir';
             } else {
                 const results = {};
+                let totalRate = 0, anyRate = false;
+                // Toplam = the sum of the TL/km values in the rows below. Both fuel
+                // types are consumed on the same real km (gasoline cold-start, then
+                // LPG) so each row's TL/km is already "cost per km of this vehicle's
+                // travel" on the same shared odometer — adding them is the combined
+                // cost per km, and it's exactly what's printed above it, nothing else.
+                const vLogs = state.logs.filter(l => l.vehicleId === filter);
                 const rows = selectedVehicle.fuelTypes.map(ft => {
-                    results[ft] = this.fullTankConsumption(state.logs.filter(l => l.vehicleId === filter && l.fuelType === ft));
+                    const ftLogs = vLogs.filter(l => l.fuelType === ft);
+                    results[ft] = this.lastCycleConsumption(ftLogs);
+                    const cd = lastPairCostDist(ftLogs, vLogs, selectedVehicle.currentOdometer);
+                    if (cd) { totalRate += cd.cost / cd.dist; anyRate = true; }
                     const label = ft === 'gasoline' ? 'Benzin' : 'LPG';
                     const badgeClass = ft === 'gasoline' ? 'badge-gasoline' : 'badge-lpg';
                     const color = ft === 'gasoline' ? 'var(--gasoline-color)' : 'var(--lpg-color)';
-                    return `<div class="stat-breakdown-row" style="align-items:center;"><span class="badge ${badgeClass}" style="padding:2px 6px;">${label}</span><span style="font-weight:600; color:${color};">${results[ft].avg > 0 ? results[ft].avg.toFixed(2) + ' L/100km' : 'Veri Yok'}</span></div>`;
+                    return `<div class="stat-breakdown-row"><span class="badge ${badgeClass}" style="padding:2px 6px;">${label}</span><span style="text-align:right;"><span style="font-weight:600; color:${color};">${results[ft].avg > 0 ? results[ft].avg.toFixed(2) + ' L/100km' : 'Veri Yok'}</span><br><span style="font-size:0.72rem; font-weight:500; color:var(--text-muted);">${cd ? `${fmtTL(cd.cost / cd.dist)} TL/km (son ${cd.dist} km)` : ''}</span></span></div>`;
                 }).join('');
-                avgConsumptionHtml = `<div class="stat-breakdown-list" style="border-top:none; padding-top:0; margin-top:0; font-size:1.05rem;">${rows}</div>`;
+                const totalRow = anyRate
+                    ? `<div class="stat-breakdown-row" style="grid-column:1/-1; border-top:1px solid var(--border-color); margin-top:6px; padding-top:6px;"><span style="font-weight:600;">Toplam</span><span style="font-weight:700;">${fmtTL(totalRate)} TL/km</span></div>`
+                    : '';
+                avgConsumptionHtml = `<div class="stat-breakdown-list" style="border-top:none; padding-top:0; margin-top:0; font-size:1.05rem;">${rows}${totalRow}</div>`;
                 trendText = selectedVehicle.fuelTypes.map(ft => {
                     const label = ft === 'gasoline' ? 'Benzin' : 'LPG';
-                    return results[ft].dist > 0 ? `${label}: ${results[ft].dist} km` : `${label} veri yok`;
+                    return results[ft].dist > 0 ? `${label}: son ${results[ft].dist} km` : `${label} veri yok`;
                 }).join(' | ');
             }
         } else {
@@ -942,6 +1054,7 @@ const app = {
             trendText = '';
         }
 
+        elements.cardAvgConsumption.classList.toggle('stat-card-wide', isMultiSeries);
         elements.valAvgConsumption.innerHTML = avgConsumptionHtml;
         document.getElementById('trend-consumption').textContent = trendText;
 
@@ -969,15 +1082,17 @@ const app = {
                 elements.carLpgProgress.style.width = '0%';
             }
 
-            const gasResult = this.fullTankConsumption(vLogs.filter(l => l.fuelType === 'gasoline'));
+            // Lifetime total (used only for the cumulative "toplam tasarruf" distance
+            // below — a running total should stay a running total). The per-km figures
+            // shown to the user reuse the exact same lastPairRate as the Son Tüketim
+            // card above, so this section can never show a different number for the
+            // same fuel type than the card does.
             const lpgResult = this.fullTankConsumption(vLogs.filter(l => l.fuelType === 'lpg'));
-            const avgGasPrice = gasLiters > 0 ? (gasSpent / gasLiters) : 0;
-            const avgLpgPrice = lpgLiters > 0 ? (lpgSpent / lpgLiters) : 0;
-            const costPerKmGas = (gasResult.avg > 0 && avgGasPrice > 0) ? (gasResult.avg / 100) * avgGasPrice : 0;
-            const costPerKmLpg = (lpgResult.avg > 0 && avgLpgPrice > 0) ? (lpgResult.avg / 100) * avgLpgPrice : 0;
+            const costPerKmGas = lastPairRate(vLogs.filter(l => l.fuelType === 'gasoline'), vLogs, selectedVehicle.currentOdometer) || 0;
+            const costPerKmLpg = lastPairRate(vLogs.filter(l => l.fuelType === 'lpg'), vLogs, selectedVehicle.currentOdometer) || 0;
 
-            elements.carGasPerKm.textContent = costPerKmGas > 0 ? `≈ ${costPerKmGas.toFixed(2)} TL/km ortalama` : 'Ort. tüketim verisi yok';
-            elements.carLpgPerKm.textContent = costPerKmLpg > 0 ? `≈ ${costPerKmLpg.toFixed(2)} TL/km ortalama` : 'Ort. tüketim verisi yok';
+            elements.carGasPerKm.textContent = costPerKmGas > 0 ? `≈ ${costPerKmGas.toFixed(2)} TL/km (son dolum)` : 'Son dolum verisi yok';
+            elements.carLpgPerKm.textContent = costPerKmLpg > 0 ? `≈ ${costPerKmLpg.toFixed(2)} TL/km (son dolum)` : 'Son dolum verisi yok';
 
             if (costPerKmGas > 0 && costPerKmLpg > 0 && lpgResult.dist > 0 && costPerKmGas > costPerKmLpg) {
                 const savingsPerKm = costPerKmGas - costPerKmLpg;
@@ -1014,6 +1129,42 @@ const app = {
         // Sort by date descending (newest first) for history list
         filteredLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
 
+        // Precompute each fill-up's own full-tank-to-full-tank consumption (L/100km)
+        // and how it changed vs. the previous cycle, grouped by vehicle + fuel type —
+        // a gasoline cycle and an LPG cycle on the same car are unrelated tanks, and
+        // different vehicles obviously don't share one either. Only fill-ups that
+        // actually close a cycle (fullTank: true, with a prior full-tank reference)
+        // get a value; partial top-ups feed into whichever cycle closes next.
+        const cycleInfoByLogId = {};
+        const groupsByVehicleFuel = new Map();
+        state.logs.forEach(l => {
+            const key = l.vehicleId + '|' + l.fuelType;
+            if (!groupsByVehicleFuel.has(key)) groupsByVehicleFuel.set(key, []);
+            groupsByVehicleFuel.get(key).push(l);
+        });
+        groupsByVehicleFuel.forEach(groupLogs => {
+            const sorted = [...groupLogs].sort((a, b) => a.odometer - b.odometer);
+            let lastFull = -1, temp = 0, prevL100 = null;
+            sorted.forEach(l => {
+                if (lastFull === -1) {
+                    if (l.fullTank) { lastFull = l.odometer; temp = 0; }
+                } else {
+                    temp += l.amount;
+                    if (l.fullTank) {
+                        const d = l.odometer - lastFull;
+                        if (d > 0) {
+                            const l100 = (temp / d) * 100;
+                            const changePct = prevL100 !== null && prevL100 > 0 ? ((l100 - prevL100) / prevL100) * 100 : null;
+                            cycleInfoByLogId[l.id] = { l100, changePct };
+                            prevL100 = l100;
+                        }
+                        lastFull = l.odometer;
+                        temp = 0;
+                    }
+                }
+            });
+        });
+
         elements.historyTableBody.innerHTML = '';
 
         if (filteredLogs.length === 0) {
@@ -1048,12 +1199,26 @@ const app = {
                 ? '<span class="badge badge-gasoline"><i data-lucide="check" style="width:12px;height:12px;margin-right:2px;"></i> Full</span>'
                 : '<span class="badge badge-lpg">Yarım</span>';
 
+            const cycleInfo = cycleInfoByLogId[log.id];
+            let consumptionHtml = '<span class="text-muted">-</span>';
+            if (cycleInfo) {
+                let changeSpan = '';
+                if (cycleInfo.changePct !== null) {
+                    const changePct = cycleInfo.changePct;
+                    const color = changePct > 0 ? 'var(--danger-color)' : (changePct < 0 ? 'var(--success-color)' : 'var(--text-muted)');
+                    const arrow = changePct > 0 ? '▲' : (changePct < 0 ? '▼' : '—');
+                    changeSpan = `<br><span style="font-size:0.72rem; font-weight:600; color:${color};">${arrow} %${Math.abs(changePct).toFixed(1)}</span>`;
+                }
+                consumptionHtml = `${cycleInfo.l100.toFixed(2)} L/100km${changeSpan}`;
+            }
+
             tr.innerHTML = `
                 <td>${formattedDate}</td>
                 <td>${vehicleBadge}</td>
                 <td>${fuelBadge}</td>
                 <td>${log.odometer.toLocaleString('tr-TR')} km</td>
-                <td>${log.amount.toFixed(2)} L</td>
+                <td>${log.amount.toFixed(3)} L</td>
+                <td>${consumptionHtml}</td>
                 <td>${log.unitPrice.toFixed(2)} TL/L</td>
                 <td style="font-weight: 600;">${log.totalPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL</td>
                 <td>${fullTankBadge}</td>
@@ -1130,9 +1295,14 @@ const app = {
             backgroundColor: seriesMeta[key].color
         }));
 
+        const monthlyEmptyState = document.getElementById('monthlyCostChart-empty');
+        if (monthlyEmptyState) monthlyEmptyState.classList.toggle('visible', labels.length === 0);
+
         if (monthlyCostChartInstance) {
             monthlyCostChartInstance.destroy();
         }
+
+        if (labels.length === 0) return;
 
         monthlyCostChartInstance = new Chart(canvas, {
             type: 'bar',
@@ -1195,9 +1365,15 @@ const app = {
         gasPrices.sort((a, b) => a.x - b.x);
         lpgPrices.sort((a, b) => a.x - b.x);
 
+        const priceTrendEmptyState = document.getElementById('priceTrendChart-empty');
+        const hasPriceData = gasPrices.length > 0 || lpgPrices.length > 0;
+        if (priceTrendEmptyState) priceTrendEmptyState.classList.toggle('visible', !hasPriceData);
+
         if (priceTrendChartInstance) {
             priceTrendChartInstance.destroy();
         }
+
+        if (!hasPriceData) return;
 
         const datasets = [];
         if (gasPrices.length > 0) {
