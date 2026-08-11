@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Main Style Sheet -->
-    <link rel="stylesheet" href="app.css">
+    <link rel="stylesheet" href="app.css?v=20260811">
     <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Lucide Icons CDN -->
@@ -78,21 +78,21 @@
                             <i data-lucide="milestone"></i>
                         </div>
                         <div class="stat-details">
-                            <span class="stat-label">Toplam Yol</span>
+                            <span class="stat-label">Son Mesafe</span>
                             <h3 class="stat-value" id="val-total-distance">0 km</h3>
-                            <span class="stat-trend" id="trend-distance">Son kayıt bazlı</span>
+                            <span class="stat-trend" id="trend-distance">Son iki dolum arası</span>
                         </div>
                     </div>
                     <div class="stat-card" id="card-total-cost">
                         <div class="stat-icon-wrapper red">
                             <i data-lucide="turkish-lira"></i>
                         </div>
-                        <div class="stat-details" style="width: 100%;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 8px;">
+                        <div class="stat-details stat-details-grow">
+                            <div class="stat-label-row">
                                 <span class="stat-label">Aylık Harcama</span>
-                                <select id="month-selector" style="background: rgba(255, 255, 255, 0.08); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 6px; padding: 3px 8px; font-size: 0.8rem; cursor: pointer; outline: none; font-family: inherit; font-weight: 500; min-width: 110px;"></select>
+                                <select id="month-selector" class="month-select"></select>
                             </div>
-                            <h3 class="stat-value" id="val-total-cost" style="margin-top: 4px;">0.00 TL</h3>
+                            <h3 class="stat-value" id="val-total-cost">0.00 TL</h3>
                             <span class="stat-trend" id="trend-cost">Yakıt ve LPG dahil</span>
                         </div>
                     </div>
@@ -101,9 +101,9 @@
                             <i data-lucide="droplet"></i>
                         </div>
                         <div class="stat-details">
-                            <span class="stat-label">Ort. Tüketim</span>
+                            <span class="stat-label">Son Tüketim</span>
                             <h3 class="stat-value" id="val-avg-consumption">0.00 L/100km</h3>
-                            <span class="stat-trend" id="trend-consumption">Karma tüketim</span>
+                            <span class="stat-trend" id="trend-consumption">Son dolum arası</span>
                         </div>
                     </div>
                     <div class="stat-card" id="card-cost-per-km">
@@ -116,7 +116,7 @@
                             <span class="stat-trend" id="trend-cost-km">Ortalama yakıt fiyatı</span>
                         </div>
                     </div>
-                    <div class="stat-card" id="card-last-odometer">
+                    <div class="stat-card stat-card-full" id="card-last-odometer">
                         <div class="stat-icon-wrapper purple">
                             <i data-lucide="gauge"></i>
                         </div>
@@ -175,6 +175,10 @@
                         </div>
                         <div class="chart-body">
                             <canvas id="monthlyCostChart"></canvas>
+                            <div class="chart-empty-state" id="monthlyCostChart-empty">
+                                <i data-lucide="bar-chart-3"></i>
+                                <span>Henüz grafik için yeterli veri yok</span>
+                            </div>
                         </div>
                     </div>
                     <div class="chart-container-card">
@@ -184,6 +188,10 @@
                         </div>
                         <div class="chart-body">
                             <canvas id="priceTrendChart"></canvas>
+                            <div class="chart-empty-state" id="priceTrendChart-empty">
+                                <i data-lucide="line-chart"></i>
+                                <span>Henüz grafik için yeterli veri yok</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -288,7 +296,7 @@
                             <div class="form-group">
                                 <label for="form-amount">Yakıt Miktarı (Litre)</label>
                                 <div class="input-with-icon">
-                                    <input type="number" id="form-amount" class="form-input" step="0.01" min="0.1" placeholder="Örn: 12.50" required>
+                                    <input type="number" id="form-amount" class="form-input" step="0.001" min="0.1" placeholder="Örn: 12.500" required>
                                     <span class="input-suffix">L</span>
                                 </div>
                             </div>
@@ -297,7 +305,7 @@
                             <div class="form-group">
                                 <label for="form-unit-price">Litre Fiyatı (TL/L)</label>
                                 <div class="input-with-icon">
-                                    <input type="number" id="form-unit-price" class="form-input" step="0.01" min="0.1" placeholder="Örn: 43.20" required>
+                                    <input type="number" id="form-unit-price" class="form-input" step="0.001" min="0.1" placeholder="Örn: 43.20" required>
                                     <span class="input-suffix">TL</span>
                                 </div>
                             </div>
@@ -306,7 +314,7 @@
                             <div class="form-group">
                                 <label for="form-total-price">Toplam Tutar (TL)</label>
                                 <div class="input-with-icon">
-                                    <input type="number" id="form-total-price" class="form-input" step="0.01" min="0.1" placeholder="Örn: 540.00" required>
+                                    <input type="number" id="form-total-price" class="form-input" step="0.001" min="0.1" placeholder="Örn: 540.00" required>
                                     <span class="input-suffix">TL</span>
                                 </div>
                                 <span class="help-text">Miktar ve birim fiyata göre otomatik hesaplanır.</span>
@@ -365,6 +373,7 @@
                                     <th>Yakıt Türü</th>
                                     <th>Sayaç (km)</th>
                                     <th>Alınan Yakıt</th>
+                                    <th>Tüketim</th>
                                     <th>Birim Fiyat</th>
                                     <th>Toplam Tutar</th>
                                     <th>Durum</th>
@@ -437,6 +446,7 @@
                         </div>
                     </div>
                 </div>
+                <p class="text-muted" id="app-version-tag" style="margin-top: 20px; text-align: center;">Sürüm: 2026-08-11</p>
             </section>
         </main>
     </div>
@@ -445,6 +455,6 @@
     <div class="toast-container" id="toast-container"></div>
 
     <!-- App Logic Script -->
-    <script src="app.js"></script>
+    <script src="app.js?v=20260811"></script>
 </body>
 </html>
