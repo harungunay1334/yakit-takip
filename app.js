@@ -87,6 +87,7 @@ const elements = {
 
     // History Table
     historyTableBody: document.getElementById('history-table-body'),
+    historyCards: document.getElementById('history-cards'),
     historyEmptyState: document.getElementById('history-empty-state'),
     filterVehicle: document.getElementById('filter-vehicle'),
     filterFuelType: document.getElementById('filter-fuel-type'),
@@ -841,6 +842,7 @@ const app = {
         elements.formNotes.value = log.notes || '';
 
         elements.submitBtnText.textContent = "Güncelle";
+        elements.pageTitle.textContent = "Kaydı Düzenle";
         elements.btnCancelEdit.classList.remove('style-hidden');
 
         this.updateLastOdometerHelp(log.vehicleId);
@@ -1292,15 +1294,16 @@ const app = {
         });
 
         elements.historyTableBody.innerHTML = '';
+        elements.historyCards.innerHTML = '';
 
-        if (filteredLogs.length === 0) {
-            elements.historyEmptyState.style.display = 'flex';
-            document.querySelector('.table-responsive').style.display = 'none';
-            return;
-        }
+        // Toggled with a class (not inline display) so the CSS can still pick table vs. cards per screen size
+        const isEmpty = filteredLogs.length === 0;
+        elements.historyEmptyState.style.display = isEmpty ? 'flex' : 'none';
+        document.querySelector('.table-responsive').classList.toggle('style-hidden', isEmpty);
+        elements.historyCards.classList.toggle('style-hidden', isEmpty);
+        if (isEmpty) return;
 
-        elements.historyEmptyState.style.display = 'none';
-        document.querySelector('.table-responsive').style.display = 'block';
+        const cardsHtml = [];
 
         filteredLogs.forEach(log => {
             const tr = document.createElement('tr');
@@ -1359,7 +1362,30 @@ const app = {
                 </td>
             `;
             elements.historyTableBody.appendChild(tr);
+
+            const fmtMoney = (n) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            cardsHtml.push(`
+                <div class="history-card">
+                    <div class="history-card-top">
+                        <div class="history-card-badges">${vehicleBadge}${fuelBadge}${fullTankBadge}</div>
+                        <span class="history-card-date">${formattedDate}</span>
+                    </div>
+                    <div class="history-card-main">
+                        <span class="history-card-total">${fmtMoney(log.totalPrice)} TL</span>
+                        <span class="history-card-consumption">${consumptionHtml.replace('<br>', ' ')}</span>
+                    </div>
+                    <div class="history-card-meta">
+                        ${log.amount.toLocaleString('tr-TR', { maximumFractionDigits: 3 })} L · ${fmtMoney(log.unitPrice)} TL/L · ${log.odometer.toLocaleString('tr-TR')} km
+                    </div>
+                    ${log.notes ? `<div class="history-card-notes">${log.notes}</div>` : ''}
+                    <div class="history-card-actions">
+                        <button class="btn btn-secondary btn-sm" onclick="app.editLog('${log.id}')"><i data-lucide="edit-3"></i> Düzenle</button>
+                        <button class="btn btn-secondary btn-sm history-card-delete" onclick="app.deleteLog('${log.id}')"><i data-lucide="trash-2"></i> Sil</button>
+                    </div>
+                </div>
+            `);
         });
+        elements.historyCards.innerHTML = cardsHtml.join('');
 
         // Re-trigger icon rendering
         lucide.createIcons();
