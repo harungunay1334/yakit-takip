@@ -30,8 +30,6 @@ const elements = {
     valTotalCost: document.getElementById('val-total-cost'),
     cardAvgConsumption: document.getElementById('card-avg-consumption'),
     valAvgConsumption: document.getElementById('val-avg-consumption'),
-    cardCostPerKm: document.getElementById('card-cost-per-km'),
-    valCostPerKm: document.getElementById('val-cost-per-km'),
     valLastOdometer: document.getElementById('val-last-odometer'),
     trendLastOdometer: document.getElementById('trend-last-odometer'),
     odometerQuickEntry: document.getElementById('odometer-quick-entry'),
@@ -907,12 +905,6 @@ const app = {
     updateDashboard: function() {
         const filter = elements.globalVehicleFilter.value || 'all';
         const selectedVehicle = filter !== 'all' ? state.vehicles.find(v => v.id === filter) : null;
-        // Whether the dashboard is showing a breakdown across more than one series
-        // (all vehicles, or one vehicle with more than one fuel type) — every KPI card
-        // shares this so their spans always add up to a multiple of 4 and the grid
-        // never leaves an empty gap (the "wide" cards are 2 tracks, so all four must
-        // switch together: 4x1 or 4x2, never a 1/2 mix that doesn't divide evenly).
-        const isMultiSeries = filter === 'all' ? state.vehicles.length > 0 : !!(selectedVehicle && selectedVehicle.fuelTypes.length > 1);
 
         // 1. Calculate Distance Since Previous Fill-up (last two records by odometer, any fuel type)
         let totalDistance = 0;
@@ -921,7 +913,6 @@ const app = {
             const vLogs = state.logs.filter(l => l.vehicleId === v.id).sort((a, b) => a.odometer - b.odometer);
             if (vLogs.length > 1) totalDistance += (vLogs[vLogs.length - 1].odometer - vLogs[vLogs.length - 2].odometer);
         });
-        elements.cardTotalDistance.classList.toggle('stat-card-wide', isMultiSeries);
         elements.valTotalDistance.textContent = totalDistance > 0 ? `${totalDistance.toLocaleString('tr-TR')} km` : '0 km';
 
         // 1b. Last Known Odometer Reading
@@ -1052,29 +1043,10 @@ const app = {
             totalCostHtml = `<div style="font-size: 1.35rem; font-weight: 700;">${totalCost.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL</div>`;
         }
 
-        elements.cardTotalCost.classList.toggle('stat-card-wide', isMultiSeries);
         elements.valTotalCost.innerHTML = totalCostHtml;
         document.getElementById('trend-cost').textContent = 'Seçili ayın toplamı';
 
-        // 3. Cost per KM — combine all fuel types on the vehicle's real (shared) odometer
-        // history so overlapping Benzin/LPG ranges on the same car aren't counted twice.
-        let costPerKm = 0, consumedCost = 0, totalDistanceForCost = 0;
-        state.vehicles.forEach(v => {
-            if (filter !== 'all' && v.id !== filter) return;
-            const vLogs = state.logs.filter(l => l.vehicleId === v.id).sort((a, b) => a.odometer - b.odometer);
-            if (vLogs.length > 1) {
-                const dist = vLogs[vLogs.length - 1].odometer - vLogs[0].odometer;
-                if (dist > 0) {
-                    totalDistanceForCost += dist;
-                    consumedCost += vLogs.slice(1).reduce((sum, l) => sum + l.totalPrice, 0);
-                }
-            }
-        });
-        if (totalDistanceForCost > 0) costPerKm = consumedCost / totalDistanceForCost;
-        elements.cardCostPerKm.classList.toggle('stat-card-wide', isMultiSeries);
-        elements.valCostPerKm.textContent = costPerKm > 0 ? `${costPerKm.toFixed(2)} TL/km` : '0.00 TL/km';
-
-        // 4. Average Fuel Consumption (L/100km), per vehicle + fuel type
+        // 3. Average Fuel Consumption (L/100km), per vehicle + fuel type
         let avgConsumptionHtml = '';
         let trendText = '';
 
@@ -1182,7 +1154,6 @@ const app = {
             trendText = '';
         }
 
-        elements.cardAvgConsumption.classList.toggle('stat-card-wide', isMultiSeries);
         elements.valAvgConsumption.innerHTML = avgConsumptionHtml;
         document.getElementById('trend-consumption').textContent = trendText;
 
