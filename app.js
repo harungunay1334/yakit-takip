@@ -26,6 +26,7 @@ const elements = {
     // KPI Cards
     cardTotalDistance: document.getElementById('card-total-distance'),
     valTotalDistance: document.getElementById('val-total-distance'),
+    lastFillInfo: document.getElementById('last-fill-info'),
     cardTotalCost: document.getElementById('card-total-cost'),
     valTotalCost: document.getElementById('val-total-cost'),
     cardAvgConsumption: document.getElementById('card-avg-consumption'),
@@ -914,6 +915,28 @@ const app = {
             if (vLogs.length > 1) totalDistance += (vLogs[vLogs.length - 1].odometer - vLogs[vLogs.length - 2].odometer);
         });
         elements.valTotalDistance.textContent = totalDistance > 0 ? `${totalDistance.toLocaleString('tr-TR')} km` : '0 km';
+
+        // 1a. Money and litres of the last fill-up (the one that ends the "Son Mesafe" stretch)
+        const lastFillOf = (vehicleId) => {
+            const vLogs = state.logs.filter(l => l.vehicleId === vehicleId);
+            return vLogs.length > 0 ? vLogs.reduce((max, l) => (l.odometer > max.odometer ? l : max), vLogs[0]) : null;
+        };
+        const fmtFillTL = (l) => `${l.totalPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL`;
+        const fmtFillL = (l) => `${l.amount.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} L`;
+        let lastFillRows = '';
+        if (filter === 'all') {
+            lastFillRows = state.vehicles.map(v => {
+                const l = lastFillOf(v.id);
+                return l ? `<div class="stat-breakdown-row"><span>${v.plaka}</span><span>${fmtFillTL(l)} · ${fmtFillL(l)}</span></div>` : '';
+            }).join('');
+        } else {
+            const l = lastFillOf(filter);
+            if (l) {
+                lastFillRows = `<div class="stat-breakdown-row"><span>Son tutar</span><span>${fmtFillTL(l)}</span></div>
+                    <div class="stat-breakdown-row"><span>Son litre</span><span>${fmtFillL(l)} ${l.fuelType === 'lpg' ? 'LPG' : 'Benzin'}</span></div>`;
+            }
+        }
+        elements.lastFillInfo.innerHTML = lastFillRows ? `<div class="stat-breakdown-list">${lastFillRows}</div>` : '';
 
         // 1b. Last Known Odometer Reading
         const getLastLog = (vehicleId) => {
