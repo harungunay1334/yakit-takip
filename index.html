@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Main Style Sheet -->
-    <link rel="stylesheet" href="app.css?v=20260811">
+    <link rel="stylesheet" href="app.css?v=20261011">
     <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Lucide Icons CDN -->
@@ -37,20 +37,20 @@
                 <h2>Yakıt<span>Takip</span></h2>
             </div>
             <nav class="nav-menu">
-                <button class="nav-item active" data-tab="dashboard">
-                    <i data-lucide="layout-dashboard"></i> Panel
+                <button class="nav-item active" data-tab="dashboard" data-short="Panel">
+                    <i data-lucide="layout-dashboard"></i> <span class="nav-label">Panel</span>
                 </button>
-                <button class="nav-item" data-tab="vehicles">
-                    <i data-lucide="car"></i> Araçlarım
+                <button class="nav-item" data-tab="vehicles" data-short="Araçlar">
+                    <i data-lucide="car"></i> <span class="nav-label">Araçlarım</span>
                 </button>
-                <button class="nav-item" data-tab="add-log">
-                    <i data-lucide="plus-circle"></i> Yeni Kayıt Ekle
+                <button class="nav-item" data-tab="add-log" data-short="Ekle">
+                    <i data-lucide="plus-circle"></i> <span class="nav-label">Yeni Kayıt Ekle</span>
                 </button>
-                <button class="nav-item" data-tab="history">
-                    <i data-lucide="history"></i> Geçmiş Kayıtlar
+                <button class="nav-item" data-tab="history" data-short="Geçmiş">
+                    <i data-lucide="history"></i> <span class="nav-label">Geçmiş Kayıtlar</span>
                 </button>
-                <button class="nav-item" data-tab="settings">
-                    <i data-lucide="settings"></i> Ayarlar & Yedek
+                <button class="nav-item" data-tab="settings" data-short="Ayarlar">
+                    <i data-lucide="settings"></i> <span class="nav-label">Ayarlar & Yedek</span>
                 </button>
             </nav>
         </aside>
@@ -260,26 +260,22 @@
                         <input type="hidden" id="log-id"> <!-- Used for Editing -->
                         
                         <div class="form-grid">
-                            <!-- Vehicle Selection -->
-                            <div class="form-group">
-                                <label for="form-vehicle">Araç Seçimi</label>
-                                <select id="form-vehicle" class="form-input" required></select>
+                            <!-- Vehicle Selection (chips drive the hidden select) -->
+                            <div class="form-group col-span-2">
+                                <label>Araç</label>
+                                <div class="chip-group" id="form-vehicle-chips"></div>
+                                <select id="form-vehicle" class="form-input chip-source"></select>
                             </div>
 
-                            <!-- Fuel Type Selection -->
-                            <div class="form-group">
-                                <label for="form-fuel-type">Yakıt Türü</label>
-                                <select id="form-fuel-type" class="form-input" required>
+                            <!-- Fuel Type Selection (chips drive the hidden select) -->
+                            <div class="form-group col-span-2">
+                                <label>Yakıt Türü</label>
+                                <div class="chip-group" id="form-fuel-chips"></div>
+                                <select id="form-fuel-type" class="form-input chip-source">
                                     <option value="" disabled selected>Önce aracı seçin...</option>
                                     <option value="gasoline">Benzin</option>
                                     <option value="lpg">LPG</option>
                                 </select>
-                            </div>
-
-                            <!-- Date Field -->
-                            <div class="form-group">
-                                <label for="form-date">Tarih</label>
-                                <input type="date" id="form-date" class="form-input" required>
                             </div>
 
                             <!-- Odometer Field -->
@@ -289,35 +285,42 @@
                                     <input type="number" id="form-odometer" class="form-input" min="0" placeholder="Örn: 42150" required>
                                     <span class="input-suffix">km</span>
                                 </div>
-                                <span class="help-text" id="odometer-help">Son girilen kilometre: <span id="last-odometer-val">-</span></span>
+                                <span class="help-text" id="odometer-help">Son girilen kilometre: <span id="last-odometer-val">-</span> <span id="odometer-diff"></span></span>
+                            </div>
+
+                            <!-- Date Field -->
+                            <div class="form-group">
+                                <label for="form-date">Tarih</label>
+                                <input type="date" id="form-date" class="form-input" required>
+                            </div>
+
+                            <!-- Unit Price Field -->
+                            <div class="form-group half">
+                                <label for="form-unit-price">Litre Fiyatı</label>
+                                <div class="input-with-icon">
+                                    <input type="number" id="form-unit-price" class="form-input" step="0.001" min="0.1" placeholder="Örn: 43.20" required>
+                                    <span class="input-suffix">TL</span>
+                                </div>
+                                <span class="help-text" id="unit-price-help"></span>
+                            </div>
+
+                            <!-- Total Price Field -->
+                            <div class="form-group half">
+                                <label for="form-total-price">Toplam Tutar</label>
+                                <div class="input-with-icon">
+                                    <input type="number" id="form-total-price" class="form-input" step="0.001" min="0.1" placeholder="Örn: 540.00" required>
+                                    <span class="input-suffix">TL</span>
+                                </div>
                             </div>
 
                             <!-- Fuel Amount Field -->
-                            <div class="form-group">
+                            <div class="form-group col-span-2">
                                 <label for="form-amount">Yakıt Miktarı (Litre)</label>
                                 <div class="input-with-icon">
                                     <input type="number" id="form-amount" class="form-input" step="0.001" min="0.1" placeholder="Örn: 12.500" required>
                                     <span class="input-suffix">L</span>
                                 </div>
-                            </div>
-
-                            <!-- Unit Price Field -->
-                            <div class="form-group">
-                                <label for="form-unit-price">Litre Fiyatı (TL/L)</label>
-                                <div class="input-with-icon">
-                                    <input type="number" id="form-unit-price" class="form-input" step="0.001" min="0.1" placeholder="Örn: 43.20" required>
-                                    <span class="input-suffix">TL</span>
-                                </div>
-                            </div>
-
-                            <!-- Total Price Field -->
-                            <div class="form-group">
-                                <label for="form-total-price">Toplam Tutar (TL)</label>
-                                <div class="input-with-icon">
-                                    <input type="number" id="form-total-price" class="form-input" step="0.001" min="0.1" placeholder="Örn: 540.00" required>
-                                    <span class="input-suffix">TL</span>
-                                </div>
-                                <span class="help-text">Miktar ve birim fiyata göre otomatik hesaplanır.</span>
+                                <span class="help-text">Tutarı ya da litreyi girmen yeterli, diğeri otomatik hesaplanır.</span>
                             </div>
 
                             <!-- Full Tank Option -->
@@ -446,7 +449,7 @@
                         </div>
                     </div>
                 </div>
-                <p class="text-muted" id="app-version-tag" style="margin-top: 20px; text-align: center;">Sürüm: 2026-08-11</p>
+                <p class="text-muted" id="app-version-tag" style="margin-top: 20px; text-align: center;">Sürüm: 2026-10-11</p>
             </section>
         </main>
     </div>
@@ -455,6 +458,6 @@
     <div class="toast-container" id="toast-container"></div>
 
     <!-- App Logic Script -->
-    <script src="app.js?v=20260811"></script>
+    <script src="app.js?v=20261011"></script>
 </body>
 </html>

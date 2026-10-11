@@ -69,12 +69,16 @@ const elements = {
     logForm: document.getElementById('fuel-log-form'),
     logIdInput: document.getElementById('log-id'),
     formVehicle: document.getElementById('form-vehicle'),
+    formVehicleChips: document.getElementById('form-vehicle-chips'),
     formFuelType: document.getElementById('form-fuel-type'),
+    formFuelChips: document.getElementById('form-fuel-chips'),
     formDate: document.getElementById('form-date'),
     formOdometer: document.getElementById('form-odometer'),
     lastOdometerVal: document.getElementById('last-odometer-val'),
+    odometerDiff: document.getElementById('odometer-diff'),
     formAmount: document.getElementById('form-amount'),
     formUnitPrice: document.getElementById('form-unit-price'),
+    unitPriceHelp: document.getElementById('unit-price-help'),
     formTotalPrice: document.getElementById('form-total-price'),
     formFullTank: document.getElementById('form-full-tank'),
     formNotes: document.getElementById('form-notes'),
@@ -232,6 +236,30 @@ const app = {
 
         elements.formAmount.addEventListener('input', recalculateTotal);
         elements.formUnitPrice.addEventListener('input', recalculateTotal);
+        elements.formUnitPrice.addEventListener('input', (e) => {
+            // A price typed by the user is never overwritten by the auto-fill again
+            if (e.isTrusted) {
+                delete elements.formUnitPrice.dataset.autofilled;
+                elements.unitPriceHelp.textContent = '';
+            }
+        });
+
+        // Form: Chip pickers (they set the hidden selects so the rest of the form logic is unchanged)
+        elements.formVehicleChips.addEventListener('click', (e) => {
+            const chip = e.target.closest('.chip');
+            if (!chip || chip.dataset.value === elements.formVehicle.value) return;
+            elements.formVehicle.value = chip.dataset.value;
+            elements.formVehicle.dispatchEvent(new Event('change'));
+        });
+        elements.formFuelChips.addEventListener('click', (e) => {
+            const chip = e.target.closest('.chip');
+            if (!chip) return;
+            elements.formFuelType.value = chip.dataset.value;
+            this.renderFormChips();
+            this.autofillUnitPrice();
+        });
+
+        elements.formOdometer.addEventListener('input', () => this.updateOdometerDiff());
         elements.formTotalPrice.addEventListener('input', recalculateAmount);
 
         // Form: Submit handler
@@ -318,6 +346,10 @@ const app = {
             elements.pageTitle.textContent = elements.logIdInput.value ? "Kaydı Düzenle" : "Yeni Kayıt Ekle";
             elements.pageSubtitle.textContent = "Yakıt dolum verilerinizi giriniz";
             elements.globalVehicleFilter.parentElement.style.display = 'none';
+            if (!elements.logIdInput.value && !elements.formVehicle.value) {
+                const lastVehicleId = this.getLastUsedVehicleId();
+                if (lastVehicleId) elements.formVehicle.value = lastVehicleId;
+            }
             // Rebuild the fuel-type options in case the selected vehicle's fuel types
             // were edited (e.g. LPG-only -> LPG+Benzin) since this tab was last shown.
             this.handleVehicleChange(elements.formVehicle.value);
@@ -390,6 +422,70 @@ const app = {
 
         const hasCurrent = currentVal !== '' && Array.from(sel.options).some(o => o.value === currentVal);
         if (hasCurrent) sel.value = currentVal;
+        this.renderFormChips();
+    },
+
+    // Vehicle of the most recently dated log (falls back to the only/first vehicle)
+    getLastUsedVehicleId: function() {
+        if (state.vehicles.length === 0) return '';
+        const known = state.logs.filter(l => state.vehicles.some(v => v.id === l.vehicleId));
+        const last = this.getLatestLog(known);
+        return last ? last.vehicleId : state.vehicles[0].id;
+    },
+
+    getLatestLog: function(logs) {
+        if (logs.length === 0) return null;
+        return logs.reduce((latest, l) => {
+            if (l.date !== latest.date) return l.date > latest.date ? l : latest;
+            return l.odometer >= latest.odometer ? l : latest;
+        }, logs[0]);
+    },
+
+    renderFormChips: function() {
+        if (state.vehicles.length === 0) {
+            elements.formVehicleChips.innerHTML = `<button type="button" class="chip chip-empty" onclick="app.switchTab('vehicles')">Önce "Araçlarım" sekmesinden araç ekleyin</button>`;
+        } else {
+            elements.formVehicleChips.innerHTML = state.vehicles.map(v => {
+                const active = v.id === elements.formVehicle.value;
+                return `<button type="button" class="chip${active ? ' active' : ''}" data-value="${v.id}" style="--chip-color:${this.getVehicleColor(v.id)}">
+                    <span class="chip-title">${v.plaka}</span>${v.isim ? `<span class="chip-sub">${v.isim}</span>` : ''}
+                </button>`;
+            }).join('');
+        }
+
+        const fuelOptions = Array.from(elements.formFuelType.options).filter(o => !o.disabled && o.value);
+        if (fuelOptions.length === 0) {
+            elements.formFuelChips.innerHTML = `<span class="chip-hint">Önce aracı seçin</span>`;
+        } else {
+            elements.formFuelChips.innerHTML = fuelOptions.map(o => {
+                const active = o.value === elements.formFuelType.value;
+                return `<button type="button" class="chip chip-fuel chip-${o.value}${active ? ' active' : ''}" data-value="${o.value}">${o.textContent}</button>`;
+            }).join('');
+        }
+    },
+
+    // Pre-fills the unit price with the latest price paid for the selected fuel type.
+    // Only touches the field when it's empty or was itself auto-filled, never in edit mode.
+    autofillUnitPrice: function() {
+        const input = elements.formUnitPrice;
+        if (elements.logIdInput.value) return;
+        if (input.value && !input.dataset.autofilled) return;
+
+        const fuelType = elements.formFuelType.value;
+        const last = fuelType ? this.getLatestLog(state.logs.filter(l => l.fuelType === fuelType)) : null;
+        if (!last) {
+            if (input.dataset.autofilled) {
+                input.value = '';
+                delete input.dataset.autofilled;
+            }
+            elements.unitPriceHelp.textContent = '';
+            return;
+        }
+
+        input.value = last.unitPrice;
+        input.dataset.autofilled = '1';
+        input.dispatchEvent(new Event('input')); // recalculates the total if litres are already entered
+        elements.unitPriceHelp.textContent = 'Son alım fiyatı';
     },
 
     // --- Vehicle Management (Add/Edit/Delete) ---
@@ -572,6 +668,7 @@ const app = {
             placeholder.selected = true;
             fuelSelect.appendChild(placeholder);
             fuelSelect.setAttribute('disabled', 'true');
+            this.renderFormChips();
             return;
         }
 
@@ -595,14 +692,22 @@ const app = {
         // vehicle (e.g. re-rendering on tab switch shouldn't discard the user's pick).
         if (vehicle.fuelTypes.includes(previousValue)) {
             fuelSelect.value = previousValue;
+        } else if (!elements.logIdInput.value && vehicle.fuelTypes.length > 1) {
+            // New entry: default to the fuel type last bought for this vehicle
+            const last = this.getLatestLog(state.logs.filter(l => l.vehicleId === vehicleId && vehicle.fuelTypes.includes(l.fuelType)));
+            if (last) fuelSelect.value = last.fuelType;
         }
 
         fuelSelect.removeAttribute('disabled');
+        this.renderFormChips();
+        this.autofillUnitPrice();
     },
 
     updateLastOdometerHelp: function(vehicleId) {
         if (!vehicleId) {
             elements.lastOdometerVal.textContent = '-';
+            elements.formOdometer.dataset.lastOdometer = '';
+            this.updateOdometerDiff();
             return;
         }
 
@@ -611,11 +716,29 @@ const app = {
             .sort((a, b) => b.odometer - a.odometer);
 
         elements.lastOdometerVal.textContent = vehicleLogs.length > 0 ? vehicleLogs[0].odometer + " km" : "Kaydedilmemiş";
+        elements.formOdometer.dataset.lastOdometer = vehicleLogs.length > 0 ? vehicleLogs[0].odometer : '';
+        this.updateOdometerDiff();
+    },
+
+    // Live "+X km" hint next to the last odometer value while typing
+    updateOdometerDiff: function() {
+        const last = parseInt(elements.formOdometer.dataset.lastOdometer);
+        const current = parseInt(elements.formOdometer.value);
+        if (isNaN(last) || isNaN(current) || elements.logIdInput.value) {
+            elements.odometerDiff.textContent = '';
+            return;
+        }
+        const diff = current - last;
+        elements.odometerDiff.textContent = diff >= 0 ? `(+${diff.toLocaleString('tr-TR')} km)` : '(son kayıttan düşük!)';
+        elements.odometerDiff.classList.toggle('text-danger', diff < 0);
     },
 
     resetForm: function() {
         elements.logForm.reset();
+        elements.formVehicle.value = ''; // back to the placeholder so the last-used vehicle is picked next time
         elements.logIdInput.value = '';
+        delete elements.formUnitPrice.dataset.autofilled;
+        elements.unitPriceHelp.textContent = '';
         elements.submitBtnText.textContent = "Kaydet";
         elements.btnCancelEdit.classList.add('style-hidden');
         this.setDefaultDate();
@@ -705,11 +828,14 @@ const app = {
         // Re-populate fuel type select based on vehicle
         this.handleVehicleChange(log.vehicleId);
         elements.formFuelType.value = log.fuelType;
+        this.renderFormChips();
 
         elements.formDate.value = log.date;
         elements.formOdometer.value = log.odometer;
         elements.formAmount.value = log.amount;
         elements.formUnitPrice.value = log.unitPrice;
+        delete elements.formUnitPrice.dataset.autofilled;
+        elements.unitPriceHelp.textContent = '';
         elements.formTotalPrice.value = log.totalPrice;
         elements.formFullTank.checked = log.fullTank;
         elements.formNotes.value = log.notes || '';

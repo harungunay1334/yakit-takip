@@ -1306,6 +1306,91 @@ body {
     }
 }
 
+/* Chip pickers (vehicle / fuel type on the add-log form) */
+.chip-source {
+    display: none;
+}
+
+.chip-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.chip {
+    --chip-color: var(--primary);
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-height: 48px;
+    padding: 10px 16px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-main);
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition-fast);
+    text-align: left;
+}
+
+.chip:hover {
+    border-color: var(--border-hover);
+    color: var(--text-primary);
+}
+
+.chip.active {
+    color: var(--text-primary);
+    border-color: var(--chip-color);
+    background-color: color-mix(in srgb, var(--chip-color) 18%, transparent);
+    box-shadow: 0 0 0 1px var(--chip-color) inset;
+}
+
+.chip-title {
+    letter-spacing: 0.3px;
+}
+
+.chip-sub {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.chip.active .chip-sub {
+    color: var(--text-secondary);
+}
+
+.chip-fuel {
+    justify-content: center;
+    align-items: center;
+    min-width: 96px;
+}
+
+.chip-gasoline {
+    --chip-color: var(--gasoline-color);
+}
+
+.chip-lpg {
+    --chip-color: var(--lpg-color);
+}
+
+.chip-empty {
+    color: var(--primary-hover);
+    border-style: dashed;
+}
+
+.chip-hint {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    padding: 12px 0;
+}
+
+.help-text .text-danger {
+    color: var(--danger-color);
+}
+
 /* Responsive Grid Adjustments */
 @media (max-width: 1024px) {
     .sidebar {
@@ -1361,7 +1446,7 @@ body {
 @media (max-width: 768px) {
     .sidebar {
         width: 100%;
-        height: calc(60px + env(safe-area-inset-bottom, 0px));
+        height: calc(64px + env(safe-area-inset-bottom, 0px));
         flex-direction: row;
         justify-content: space-around;
         align-items: center;
@@ -1389,21 +1474,55 @@ body {
     
     .nav-item {
         flex: 1;
+        min-width: 0;
+        width: auto;
         height: auto;
-        padding: 8px 0;
+        padding: 8px 0 6px;
         flex-direction: column;
-        gap: 4px;
+        gap: 3px;
         align-items: center;
+        justify-content: flex-end;
         border-radius: 8px;
+        font-size: 0;
     }
-    
-    .nav-item span {
+
+    .nav-item .nav-label {
         display: none;
     }
-    
-    .nav-item i {
+
+    /* Short label under each icon (full labels are too long for a phone) */
+    .nav-item::after {
+        content: attr(data-short);
+        font-size: 0.68rem;
+        font-weight: 500;
+        line-height: 1;
+    }
+
+    .nav-item.active::after {
+        font-weight: 700;
+    }
+
+    .nav-item i, .nav-item svg {
         width: 22px;
         height: 22px;
+    }
+
+    /* Prominent, raised "Ekle" button in the middle of the bar */
+    .nav-item[data-tab="add-log"] i,
+    .nav-item[data-tab="add-log"] svg {
+        box-sizing: content-box;
+        width: 26px;
+        height: 26px;
+        padding: 12px;
+        margin-top: -28px;
+        border-radius: 50%;
+        background: var(--accent-gradient);
+        color: #fff !important;
+        box-shadow: 0 6px 16px -4px var(--primary-glow), 0 0 0 5px var(--bg-sidebar);
+    }
+
+    .nav-item[data-tab="add-log"]:active svg {
+        transform: scale(0.94);
     }
     
     .nav-item.active {
@@ -1421,7 +1540,7 @@ body {
 
     .main-content {
         margin-left: 0;
-        margin-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+        margin-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
         padding: 16px;
         gap: 20px;
     }
@@ -1472,6 +1591,147 @@ body {
 
     .settings-grid {
         grid-template-columns: 1fr;
+    }
+
+    /* Header: one compact line */
+    .header-info h1 {
+        font-size: 1.4rem;
+    }
+
+    #page-subtitle {
+        display: none;
+    }
+
+    .content-header {
+        gap: 12px;
+    }
+
+    /* iOS zooms into inputs under 16px — keep them at 16px */
+    .form-input, .select-input, .odometer-input, .month-select {
+        font-size: 16px;
+    }
+
+    /* Panel: compact 2-column grid, most-used card first */
+    .stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+
+    .stat-card {
+        padding: 14px;
+        gap: 12px;
+    }
+
+    .stat-card:hover {
+        transform: none;
+    }
+
+    .stat-icon-wrapper {
+        width: 34px;
+        height: 34px;
+    }
+
+    .stat-icon-wrapper i, .stat-icon-wrapper svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    .stat-value {
+        font-size: 1.25rem;
+    }
+
+    .stat-card,
+    .stat-card.stat-card-wide {
+        grid-column: 1 / -1;
+    }
+
+    #card-total-cost { order: -2; }
+    #card-avg-consumption { order: -1; }
+
+    /* Single-number cards sit side by side */
+    #card-total-distance,
+    #card-total-distance.stat-card-wide,
+    #card-cost-per-km,
+    #card-cost-per-km.stat-card-wide {
+        grid-column: span 1;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .stat-label {
+        font-size: 0.7rem;
+        letter-spacing: 0.4px;
+    }
+
+    .fuel-breakdown-card {
+        padding: 16px;
+    }
+
+    .chart-container-card {
+        padding: 16px;
+    }
+
+    .chart-body {
+        height: 200px;
+    }
+
+    /* Add-log form: paired fields, big tap targets, save button always reachable */
+    .form-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+    }
+
+    .form-grid > .form-group,
+    .form-grid > .form-group.col-span-2,
+    .form-grid > .checkbox-group {
+        grid-column: 1 / -1;
+    }
+
+    .form-grid > .form-group.half {
+        grid-column: span 1;
+        min-width: 0;
+    }
+
+    .input-with-icon .form-input {
+        padding-right: 42px;
+    }
+
+    .input-suffix {
+        right: 14px;
+    }
+
+    .form-header p {
+        display: none;
+    }
+
+    .chip {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+
+    .checkbox-label input[type="checkbox"] {
+        width: 22px;
+        height: 22px;
+    }
+
+    .checkbox-label input[type="checkbox"]:checked::after {
+        left: 7px;
+        top: 3px;
+    }
+
+    .form-actions {
+        position: sticky;
+        bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+        z-index: 5;
+        margin: 20px -20px -20px;
+        padding: 12px 20px;
+        background-color: var(--bg-card);
+        border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    }
+
+    .form-actions .btn {
+        flex: 1;
+        padding: 14px;
     }
 
     .toast-container {
